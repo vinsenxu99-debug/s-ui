@@ -222,9 +222,13 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		if isTls {
 			proxy["tls"] = tls["enabled"]
 
-			// ALPN if exists
-			if alpn, ok := tls["alpn"].([]interface{}); ok {
-				proxy["alpn"] = alpn
+			switch t {
+			case "hysteria", "hysteria2", "tuic":
+				proxy["alpn"] = []string{"h3"}
+			default:
+				if alpn, ok := tls["alpn"].([]interface{}); ok {
+					proxy["alpn"] = alpn
+				}
 			}
 
 			// Add reality if exists
@@ -296,8 +300,29 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				if path, ok := transport["path"].(string); ok {
 					wsOpts["path"] = path
 				}
-				if headers, ok := transport["headers"].([]interface{}); ok {
-					wsOpts["headers"] = headers
+				wsHeaders := make(map[string]interface{})
+				if headers, ok := transport["headers"].(map[string]interface{}); ok {
+					for k, v := range headers {
+						if arr, ok := v.([]interface{}); ok {
+							if len(arr) > 0 {
+								wsHeaders[k] = arr[0]
+							}
+						} else {
+							wsHeaders[k] = v
+						}
+					}
+				}
+				if _, hasHost := wsHeaders["Host"]; !hasHost {
+					if host, ok := transport["host"].(string); ok && host != "" {
+						wsHeaders["Host"] = host
+					} else if isTls {
+						if sni, ok := tls["server_name"].(string); ok && sni != "" {
+							wsHeaders["Host"] = sni
+						}
+					}
+				}
+				if len(wsHeaders) > 0 {
+					wsOpts["headers"] = wsHeaders
 				}
 				if ed, ok := transport["early_data_header_name"].(string); ok {
 					wsOpts["early-data-header-name"] = ed

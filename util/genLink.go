@@ -353,6 +353,12 @@ func tuicLink(
 	baseUri := fmt.Sprintf("%s%s:%s@", "tuic://", uuid, password)
 	var links []string
 
+	// udp_relay_mode is a client-side (outbound) param and lives in out_json
+	var outJson map[string]interface{}
+	if raw, ok := inbound["out_json"].(json.RawMessage); ok {
+		_ = json.Unmarshal(raw, &outJson)
+	}
+
 	for _, addr := range addrs {
 		var params []LinkParam
 		if tls, ok := addr["tls"].(map[string]interface{}); ok {
@@ -360,6 +366,9 @@ func tuicLink(
 		}
 		if congestionControl, ok := inbound["congestion_control"].(string); ok {
 			params = append(params, LinkParam{"congestion_control", congestionControl})
+		}
+		if udpRelayMode, ok := outJson["udp_relay_mode"].(string); ok && udpRelayMode != "" {
+			params = append(params, LinkParam{"udp_relay_mode", udpRelayMode})
 		}
 
 		port, _ := addr["server_port"].(float64)
@@ -377,6 +386,10 @@ func vlessLink(
 
 	uuid, _ := userConfig["uuid"].(string)
 	baseParams := getTransportParams(inbound["transport"])
+	isTcp := false
+	if len(baseParams) == 1 && baseParams[0].Value == "tcp" {
+		isTcp = true
+	}
 	var links []string
 
 	for _, addr := range addrs {
@@ -384,7 +397,7 @@ func vlessLink(
 		copy(params, baseParams)
 		if tls, ok := addr["tls"].(map[string]interface{}); ok && tls["enabled"].(bool) {
 			getTlsParams(&params, tls, "allowInsecure")
-			if flow, ok := userConfig["flow"].(string); ok {
+			if flow, ok := userConfig["flow"].(string); ok && isTcp {
 				params = append(params, LinkParam{"flow", flow})
 			}
 		}
